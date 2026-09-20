@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="id" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="TerasDocs — pusat dokumentasi produk dan layanan">
+    <meta name="theme-color" content="#0f172a">
+    <title>TerasDocs</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/assets/app.css">
+    <script src="/js/theme.js"></script>
+  </head>
+  <body class="min-h-screen bg-white text-slate-800 antialiased dark:bg-slate-950 dark:text-slate-200">
+    <header class="app-header">
+      <div class="header-inner">
+        <button id="menu-button" class="icon-button lg:hidden" aria-label="Buka navigasi">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <a href="#/" class="brand-link">
+          <span class="brand-mark"><svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a3 3 0 0 1 3 3v15a3 3 0 0 0-3-3H4V5.5Z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H14v18a3 3 0 0 1 3-3h3V5.5Z"/></svg></span>
+          <span class="hidden sm:inline">TerasDocs</span>
+        </a>
+        <div class="relative ml-auto min-w-0 flex-1 sm:max-w-md">
+          <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="search" type="search" aria-label="Cari semua dokumentasi" autocomplete="off" placeholder="Cari semua dokumentasi" class="w-full rounded-md border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-950">
+          <div id="search-results" role="listbox" class="absolute right-0 top-12 hidden max-h-80 w-full overflow-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"></div>
+        </div>
+        <button id="theme-button" class="icon-button" aria-label="Ganti tema">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
+        <a href="/admin/" class="button-secondary hidden sm:inline-flex">Panel admin</a>
+      </div>
+    </header>
+
+    <div class="grid min-h-[calc(100vh-4rem)] w-full items-stretch lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_280px]">
+      <div id="sidebar-overlay" class="fixed inset-0 z-30 hidden bg-slate-950/40 lg:hidden"></div>
+      <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full overflow-y-auto border-r border-slate-200 bg-white px-5 pb-8 pt-5 transition-transform lg:sticky lg:top-16 lg:z-20 lg:h-[calc(100vh-4rem)] lg:w-auto lg:translate-x-0 lg:border-y-0 lg:p-5 dark:border-slate-800 dark:bg-slate-950">
+        <div class="mb-6 flex items-center justify-between lg:hidden">
+          <span class="font-bold">Navigasi</span>
+          <button id="close-menu" class="icon-button" aria-label="Tutup navigasi">✕</button>
+        </div>
+        <a id="summary-link" href="#/" class="mb-6 hidden items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900"><span aria-hidden="true">←</span> Ringkasan</a>
+        <nav id="project-nav" class="space-y-1" aria-label="Daftar dokumentasi"></nav>
+        <div id="mobile-page-navigation" class="mt-7 border-t border-slate-200 pt-6 xl:hidden dark:border-slate-800"></div>
+      </aside>
+
+      <main id="main-content" class="min-w-0 px-4 py-6 sm:px-6 lg:min-h-[calc(100vh-4rem)] lg:px-8 lg:py-8">
+        <div class="min-h-[calc(100vh-9rem)] w-full py-2">
+          <div class="animate-pulse space-y-4">
+            <div class="h-5 w-28 rounded bg-slate-200 dark:bg-slate-800"></div>
+            <div class="h-10 w-2/3 rounded bg-slate-200 dark:bg-slate-800"></div>
+            <div class="h-4 w-full rounded bg-slate-200 dark:bg-slate-800"></div>
+          </div>
+        </div>
+      </main>
+
+      <aside id="page-sidebar" class="sticky top-16 hidden h-[calc(100vh-4rem)] overflow-y-auto border-l border-slate-200 px-5 py-8 xl:block dark:border-slate-800">
+        <div id="page-sidebar-content"></div>
+      </aside>
+    </div>
+    <div id="toast" role="status" aria-live="polite" class="fixed bottom-5 right-5 z-50 hidden rounded-md bg-slate-950 px-4 py-3 text-sm text-white shadow-lg"></div>
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>

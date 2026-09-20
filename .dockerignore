@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+.env
+.git
+storage/backups
+storage/uploads
+storage/content/*
+!storage/content/.gitkeep
+storage/*.json
+storage/.initialized
+storage/.restore

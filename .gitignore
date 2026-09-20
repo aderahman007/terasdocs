@@ -1,0 +1,14 @@
+node_modules/
+.env
+public/assets/app.css
+storage/backups/*
+!storage/backups/.gitkeep
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/content/*
+!storage/content/.gitkeep
+storage/*.json
+storage/.initialized
+storage/.restore/
+npm-debug.log*
+.DS_Store
