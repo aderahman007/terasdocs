@@ -14,6 +14,7 @@ TerasDocs adalah platform dokumentasi self-hosted dengan website publik dan pane
 ## Fitur utama
 
 - Beberapa proyek dokumentasi dalam satu instalasi.
+- Akses proyek publik, privat khusus admin, atau draft.
 - Struktur proyek, bagian, dan halaman yang dapat diurutkan dengan drag-and-drop.
 - Editor Markdown dengan preview langsung dan dukungan baris baru ala editor teks.
 - Pencarian global serta filter halaman dalam proyek aktif.
@@ -42,6 +43,7 @@ TerasDocs adalah platform dokumentasi self-hosted dengan website publik dan pane
 - [Konfigurasi](#konfigurasi)
 - [Deploy ke VPS](#deploy-ke-vps)
 - [Penyimpanan](#penyimpanan)
+- [Dokumentasi privat](#dokumentasi-privat)
 - [Media dan lampiran](#media-dan-lampiran)
 - [Keamanan](#keamanan)
 - [Kontribusi](#kontribusi)
@@ -429,6 +431,20 @@ Panel admin menyediakan menu **Backup** untuk membuat backup lengkap, melihat sn
 
 Backup lengkap mencakup metadata, seluruh Markdown, media, dan lampiran, tetapi tidak menyertakan riwayat backup lain di dalamnya. Hanya arsip lengkap yang dibuat oleh TerasDocs yang dapat dipulihkan; snapshot otomatis bersifat parsial dan hanya tersedia untuk diunduh.
 
+## Dokumentasi privat
+
+Setiap proyek memiliki salah satu status akses berikut:
+
+- **Publik**: proyek dan halaman yang dipublikasikan dapat dibaca semua pengunjung.
+- **Privat**: proyek menggunakan tampilan dokumentasi biasa, tetapi hanya dapat dibaca oleh admin yang sudah login.
+- **Draft**: proyek hanya tersedia di panel admin dan tidak tampil pada website dokumentasi.
+
+Status privat berlaku untuk seluruh bagian dan halaman di dalam proyek. Halaman yang dinonaktifkan opsi publikasinya tetap menjadi draft, termasuk ketika proyek induknya privat.
+
+Ketika pengunjung membuka URL proyek privat tanpa sesi, TerasDocs mengarahkannya ke halaman login. Setelah login berhasil, pengunjung dikembalikan ke URL dokumentasi semula. Katalog, navigasi, pencarian, isi halaman, dan media privat diperiksa pada server sehingga perlindungan tidak hanya bergantung pada tampilan antarmuka.
+
+Versi saat ini memakai satu akun admin dari `ADMIN_USERNAME` dan `ADMIN_PASSWORD_HASH`. Belum tersedia akun pengguna terpisah atau izin berbeda untuk setiap proyek.
+
 ## Media dan lampiran
 
 Gunakan tombol **Sisipkan media** pada editor halaman untuk mengunggah gambar, SVG, video, PDF, atau lampiran dokumen. File disimpan di `storage/uploads`, sedangkan metadata disimpan dalam `storage/media.json`. File tidak diekspos sebagai direktori statis dan hanya dilayani melalui URL `/media/<id>`.
@@ -449,6 +465,7 @@ Jangan mengekspos folder `storage` sebagai direktori statis melalui Nginx atau w
 - Gunakan password admin yang panjang dan unik, lalu simpan hanya hasil hash-nya pada `ADMIN_PASSWORD_HASH`.
 - Aktifkan HTTPS dan `COOKIE_SECURE=true` pada deployment publik.
 - Jangan mengekspos port `3000` atau direktori `storage` langsung ke internet.
+- Media yang hanya dipakai proyek privat atau draft juga memerlukan sesi admin dan tidak menggunakan cache publik.
 - Lakukan backup berkala dan uji proses pemulihannya.
 - Session admin disimpan di memori dan akan berakhir ketika proses server dimulai ulang.
 - Login dibatasi maksimal lima kegagalan per alamat IP dalam jendela 15 menit.

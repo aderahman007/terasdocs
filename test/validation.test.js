@@ -8,6 +8,14 @@ test('validasi proyek menerima data yang valid', () => {
   assert.equal(result.order, 1);
 });
 
+test('validasi proyek mendukung akses privat dan draft', () => {
+  const privateProject = validateProject({ title: 'Internal', slug: 'internal', order: 0, visibility: 'private' });
+  const draftProject = validateProject({ title: 'Rancangan', slug: 'rancangan', order: 0, visibility: 'draft' });
+  assert.equal(privateProject.visibility, 'private');
+  assert.equal(privateProject.published, true);
+  assert.equal(draftProject.published, false);
+});
+
 test('validasi proyek menolak slug tidak aman', () => {
   assert.throws(() => validateProject({ title: 'SIMRS', slug: '../simrs', order: 0 }), /Slug/);
 });

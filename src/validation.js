@@ -25,13 +25,22 @@ export function cleanOrder(value) {
   return order;
 }
 
+export function cleanProjectVisibility(value, published = true) {
+  const fallback = published === false ? 'draft' : 'public';
+  const visibility = typeof value === 'string' ? value : fallback;
+  assert(['public', 'private', 'draft'].includes(visibility), 422, 'Akses proyek harus publik, privat, atau draft.');
+  return visibility;
+}
+
 export function validateProject(input) {
+  const visibility = cleanProjectVisibility(input.visibility, input.published);
   return {
     title: cleanString(input.title, 'Judul'),
     slug: cleanSlug(input.slug),
     description: cleanString(input.description, 'Deskripsi', { required: false, max: 500 }),
     order: cleanOrder(input.order ?? 0),
-    published: cleanBoolean(input.published),
+    visibility,
+    published: visibility !== 'draft',
   };
 }
 

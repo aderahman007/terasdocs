@@ -22,7 +22,15 @@ const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, (character)
 async function api(url) {
   const response = await fetch(url, { headers: { Accept: 'application/json' } });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || 'Tidak dapat memuat data.');
+  if (!response.ok) {
+    if (response.status === 401) {
+      const returnPath = `${location.pathname}${location.search}${location.hash}`;
+      location.assign(`/admin/?return=${encodeURIComponent(returnPath)}`);
+    }
+    const error = new Error(body.error || 'Tidak dapat memuat data.');
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 
@@ -43,7 +51,7 @@ function collapsedSections(projectId) {
 }
 
 function renderProjects(activeProjectId = null) {
-  projectNav.innerHTML = state.projects.map((project) => `<a href="${projectRoute(project)}" class="group flex items-center justify-between gap-3 rounded-md px-3 py-2.5 text-sm transition ${project.id === activeProjectId ? 'bg-slate-900 font-semibold text-white dark:bg-white dark:text-slate-950' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white'}"><span class="truncate">${escapeHtml(project.title)}</span><span class="shrink-0 text-xs ${project.id === activeProjectId ? 'text-slate-300 dark:text-slate-500' : 'text-slate-400'}">${project.documentCount}</span></a>`).join('') || '<p class="px-3 py-2 text-sm text-slate-500">Belum ada dokumentasi.</p>';
+  projectNav.innerHTML = state.projects.map((project) => `<a href="${projectRoute(project)}" class="group flex items-center justify-between gap-3 rounded-md px-3 py-2.5 text-sm transition ${project.id === activeProjectId ? 'bg-slate-900 font-semibold text-white dark:bg-white dark:text-slate-950' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white'}"><span class="min-w-0 flex items-center gap-2"><span class="truncate">${escapeHtml(project.title)}</span>${project.visibility === 'private' ? '<span class="shrink-0 text-[9px] font-semibold uppercase tracking-wider opacity-65">Privat</span>' : ''}</span><span class="shrink-0 text-xs ${project.id === activeProjectId ? 'text-slate-300 dark:text-slate-500' : 'text-slate-400'}">${project.documentCount}</span></a>`).join('') || '<p class="px-3 py-2 text-sm text-slate-500">Belum ada dokumentasi.</p>';
 }
 
 async function loadNavigation(projectSlug) {
@@ -101,7 +109,7 @@ function renderHome() {
   summaryLink.classList.remove('flex');
   hidePageNavigation();
   document.title = 'TerasDocs';
-  main.innerHTML = `<div class="w-full"><header class="border-b border-slate-200 pb-6 dark:border-slate-800"><h1 class="max-w-3xl text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl dark:text-white">Dokumentasi produk dan layanan</h1><p class="mt-3 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base dark:text-slate-400">Pilih dokumentasi yang ingin dibaca atau cari topik tertentu melalui kolom pencarian.</p></header><div class="divide-y divide-slate-200 dark:divide-slate-800">${state.projects.map((project, index) => `<a href="${projectRoute(project)}" class="group grid gap-3 py-6 transition sm:grid-cols-[2.5rem_1fr_auto] sm:items-start"><span class="font-mono text-xs text-slate-400">${String(index + 1).padStart(2, '0')}</span><span><strong class="block text-lg font-semibold text-slate-950 group-hover:text-indigo-600 dark:text-white">${escapeHtml(project.title)}</strong><span class="mt-1 block max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">${escapeHtml(project.description || 'Dokumentasi dan panduan.')}</span></span><span class="text-sm text-slate-400"><span>${project.documentCount} halaman</span><span class="ml-3 text-slate-900 dark:text-white">→</span></span></a>`).join('') || '<div class="border-b border-dashed border-slate-300 py-12 text-center text-slate-500">Belum ada dokumentasi yang dipublikasikan.</div>'}</div></div>`;
+  main.innerHTML = `<div class="w-full"><header class="border-b border-slate-200 pb-6 dark:border-slate-800"><h1 class="max-w-3xl text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl dark:text-white">Dokumentasi produk dan layanan</h1><p class="mt-3 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base dark:text-slate-400">Pilih dokumentasi yang ingin dibaca atau cari topik tertentu melalui kolom pencarian.</p></header><div class="divide-y divide-slate-200 dark:divide-slate-800">${state.projects.map((project, index) => `<a href="${projectRoute(project)}" class="group grid gap-3 py-6 transition sm:grid-cols-[2.5rem_1fr_auto] sm:items-start"><span class="font-mono text-xs text-slate-400">${String(index + 1).padStart(2, '0')}</span><span><span class="flex flex-wrap items-center gap-2"><strong class="text-lg font-semibold text-slate-950 group-hover:text-indigo-600 dark:text-white">${escapeHtml(project.title)}</strong>${project.visibility === 'private' ? '<span class="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">Privat</span>' : ''}</span><span class="mt-1 block max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">${escapeHtml(project.description || 'Dokumentasi dan panduan.')}</span></span><span class="text-sm text-slate-400"><span>${project.documentCount} halaman</span><span class="ml-3 text-slate-900 dark:text-white">→</span></span></a>`).join('') || '<div class="border-b border-dashed border-slate-300 py-12 text-center text-slate-500">Belum ada dokumentasi yang dipublikasikan.</div>'}</div></div>`;
 }
 
 function renderProjectOverview(navigation) {
@@ -112,7 +120,7 @@ function renderProjectOverview(navigation) {
   summaryLink.classList.add('flex');
   renderPageNavigation(navigation);
   document.title = `${navigation.project.title} — TerasDocs`;
-  main.innerHTML = `<div class="min-h-[calc(100vh-9rem)] w-full"><header class="border-b border-slate-200 pb-8 dark:border-slate-800"><h1 class="text-4xl font-bold tracking-tight text-slate-950 dark:text-white">${escapeHtml(navigation.project.title)}</h1><p class="mt-4 max-w-3xl text-base leading-7 text-slate-500 dark:text-slate-400">${escapeHtml(navigation.project.description)}</p></header><div class="divide-y divide-slate-200 dark:divide-slate-800">${navigation.sections.map((section, index) => { const pages = navigation.documents.filter((page) => page.sectionId === section.id); return `<section class="grid gap-3 py-6 sm:grid-cols-[2.5rem_1fr_auto] sm:items-center"><span class="font-mono text-xs text-slate-400">${String(index + 1).padStart(2, '0')}</span><span><h2 class="font-semibold text-slate-950 dark:text-white">${escapeHtml(section.title)}</h2><p class="mt-1 text-sm text-slate-500">${pages.length} halaman</p></span>${pages[0] ? `<a href="${routeFor(navigation.project, pages[0])}" class="text-sm font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400">Mulai membaca →</a>` : '<span class="text-sm text-slate-400">Kosong</span>'}</section>`; }).join('')}</div></div>`;
+  main.innerHTML = `<div class="min-h-[calc(100vh-9rem)] w-full"><header class="border-b border-slate-200 pb-8 dark:border-slate-800"><div class="flex flex-wrap items-center gap-3"><h1 class="text-4xl font-bold tracking-tight text-slate-950 dark:text-white">${escapeHtml(navigation.project.title)}</h1>${navigation.project.visibility === 'private' ? '<span class="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300">Dokumentasi privat</span>' : ''}</div><p class="mt-4 max-w-3xl text-base leading-7 text-slate-500 dark:text-slate-400">${escapeHtml(navigation.project.description)}</p></header><div class="divide-y divide-slate-200 dark:divide-slate-800">${navigation.sections.map((section, index) => { const pages = navigation.documents.filter((page) => page.sectionId === section.id); return `<section class="grid gap-3 py-6 sm:grid-cols-[2.5rem_1fr_auto] sm:items-center"><span class="font-mono text-xs text-slate-400">${String(index + 1).padStart(2, '0')}</span><span><h2 class="font-semibold text-slate-950 dark:text-white">${escapeHtml(section.title)}</h2><p class="mt-1 text-sm text-slate-500">${pages.length} halaman</p></span>${pages[0] ? `<a href="${routeFor(navigation.project, pages[0])}" class="text-sm font-semibold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400">Mulai membaca →</a>` : '<span class="text-sm text-slate-400">Kosong</span>'}</section>`; }).join('')}</div></div>`;
 }
 
 function adjacentPageMarkup(navigation, target, direction) {

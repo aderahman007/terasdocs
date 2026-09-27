@@ -44,3 +44,11 @@ export function renderMarkdown(markdown) {
     },
   });
 }
+
+export function extractMediaIds(markdown) {
+  const html = renderMarkdown(markdown);
+  const ids = new Set();
+  const attributePattern = /(?:src|href|poster)="((?:https?:\/\/[^/"\s]+)?\/media\/([a-f0-9-]{36})(?:[?#][^"]*)?)"/gi;
+  for (const match of html.matchAll(attributePattern)) ids.add(match[2].toLowerCase());
+  return ids;
+}

@@ -92,6 +92,17 @@ function showDashboard() {
   dashboard.classList.remove('hidden');
 }
 
+function safeLoginReturnPath() {
+  const value = new URLSearchParams(location.search).get('return');
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+  try {
+    const target = new URL(value, location.origin);
+    return target.origin === location.origin ? `${target.pathname}${target.search}${target.hash}` : null;
+  } catch {
+    return null;
+  }
+}
+
 async function refresh() {
   const catalog = await api('/api/admin/catalog');
   state.projects = catalog.projects;
@@ -108,8 +119,10 @@ function renderProjects() {
   list.innerHTML = `<button data-project-id="" class="project-row ${state.selectedProjectId === null ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950' : ''}"><span>Semua proyek</span><span class="text-xs opacity-60">${state.documents.length}</span></button>` + state.projects.map((project) => {
     const count = state.documents.filter((item) => item.projectId === project.id).length;
     const active = state.selectedProjectId === project.id;
+    const visibility = project.visibility || (project.published ? 'public' : 'draft');
+    const visibilityLabel = visibility === 'private' ? 'Privat' : visibility === 'draft' ? 'Draft' : 'Publik';
     return `<div class="group flex items-center gap-1 rounded-md ${active ? 'bg-slate-900 dark:bg-white' : ''}">
-      <button data-project-id="${project.id}" class="project-row min-w-0 flex-1 ${active ? 'text-white hover:bg-transparent hover:text-white dark:text-slate-950 dark:hover:text-slate-950' : ''}"><span class="truncate">${escapeHtml(project.title)}</span><span class="text-xs opacity-60">${count}</span></button>
+      <button data-project-id="${project.id}" class="project-row min-w-0 flex-1 ${active ? 'text-white hover:bg-transparent hover:text-white dark:text-slate-950 dark:hover:text-slate-950' : ''}"><span class="min-w-0 flex-1"><span class="block truncate">${escapeHtml(project.title)}</span><span class="mt-0.5 block text-[10px] uppercase tracking-wider opacity-60">${visibilityLabel}</span></span><span class="text-xs opacity-60">${count}</span></button>
       <button data-edit-project="${project.id}" class="rounded-md p-2 text-xs ${active ? 'text-slate-300 hover:text-white dark:text-slate-500 dark:hover:text-slate-950' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-slate-800 dark:hover:text-white'}" aria-label="Edit proyek">Ubah</button>
     </div>`;
   }).join('');
@@ -123,8 +136,12 @@ function renderDocuments() {
   document.querySelector('#document-list').innerHTML = items.map((item) => {
     const owner = state.projects.find((candidate) => candidate.id === item.projectId);
     const section = state.sections.find((candidate) => candidate.id === item.sectionId);
+    const privatePage = item.published && owner?.visibility === 'private';
+    const statusLabel = !item.published ? 'Draft' : privatePage ? 'Privat' : 'Publik';
+    const statusClass = !item.published ? 'text-amber-700 dark:text-amber-400' : privatePage ? 'text-indigo-700 dark:text-indigo-400' : 'text-emerald-700 dark:text-emerald-400';
+    const dotClass = !item.published ? 'bg-amber-500' : privatePage ? 'bg-indigo-500' : 'bg-emerald-500';
     return `<article class="flex items-center gap-4 px-5 py-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/50">
-      <div class="min-w-0 flex-1"><div class="flex items-center gap-2"><h3 class="truncate font-semibold">${escapeHtml(item.title)}</h3><span class="inline-flex items-center gap-1.5 text-[11px] font-medium ${item.published ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}"><span class="h-1.5 w-1.5 rounded-full ${item.published ? 'bg-emerald-500' : 'bg-amber-500'}"></span>${item.published ? 'Publik' : 'Draft'}</span></div><p class="mt-1 truncate text-xs text-slate-500">${escapeHtml(owner?.title || 'Tanpa proyek')} · ${escapeHtml(section?.title || 'Tanpa bagian')} · /${escapeHtml(item.slug)}</p></div>
+      <div class="min-w-0 flex-1"><div class="flex items-center gap-2"><h3 class="truncate font-semibold">${escapeHtml(item.title)}</h3><span class="inline-flex items-center gap-1.5 text-[11px] font-medium ${statusClass}"><span class="h-1.5 w-1.5 rounded-full ${dotClass}"></span>${statusLabel}</span></div><p class="mt-1 truncate text-xs text-slate-500">${escapeHtml(owner?.title || 'Tanpa proyek')} · ${escapeHtml(section?.title || 'Tanpa bagian')} · /${escapeHtml(item.slug)}</p></div>
       <button data-edit-document="${item.id}" class="button-secondary">Edit</button>
       <button data-delete-document="${item.id}" class="rounded-lg px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30">Hapus</button>
     </article>`;
@@ -144,7 +161,7 @@ function renderSections() {
 }
 
 function projectOptions(selected = '') {
-  return state.projects.map((item) => `<option value="${item.id}" ${item.id === selected ? 'selected' : ''}>${escapeHtml(item.title)}</option>`).join('');
+  return state.projects.map((item) => `<option value="${item.id}" ${item.id === selected ? 'selected' : ''}>${escapeHtml(item.title)}${item.visibility === 'private' ? ' (Privat)' : item.visibility === 'draft' ? ' (Draft)' : ''}</option>`).join('');
 }
 
 function fillSectionOptions(projectId, selected = '') {
@@ -193,6 +210,7 @@ function backupOperationLabel(backup) {
     'delete-media': 'Sebelum menghapus media',
     'delete-unused-media': 'Sebelum membersihkan media',
     'migrate-sections': 'Sebelum migrasi bagian',
+    'migrate-project-visibility': 'Sebelum migrasi akses proyek',
   };
   return labels[backup.operation] || 'Snapshot otomatis';
 }
@@ -461,7 +479,7 @@ function renderOrderManager() {
         <span class="flex shrink-0">${orderButton('up', 'section', section.id, sectionIndex === 0)}${orderButton('down', 'section', section.id, sectionIndex === structure.sections.length - 1)}</span>
       </div>
       <div data-document-zone="${section.id}" class="min-h-14 divide-y divide-slate-100 p-2 dark:divide-slate-800">${pages.map((page, pageIndex) => `<div draggable="true" data-order-kind="document" data-order-id="${page.id}" data-section-id="${section.id}" class="flex cursor-grab items-center gap-3 rounded-md px-2 py-2.5 hover:bg-slate-50 active:cursor-grabbing dark:hover:bg-slate-800/60">
-          <span class="select-none text-slate-400" aria-hidden="true">⋮⋮</span><span class="min-w-0 flex-1 truncate text-sm">${escapeHtml(page.title)}</span><span class="text-[11px] ${page.published ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}">${page.published ? 'Publik' : 'Draft'}</span>
+          <span class="select-none text-slate-400" aria-hidden="true">⋮⋮</span><span class="min-w-0 flex-1 truncate text-sm">${escapeHtml(page.title)}</span><span class="text-[11px] ${!page.published ? 'text-amber-700 dark:text-amber-400' : project?.visibility === 'private' ? 'text-indigo-700 dark:text-indigo-400' : 'text-emerald-700 dark:text-emerald-400'}">${!page.published ? 'Draft' : project?.visibility === 'private' ? 'Privat' : 'Publik'}</span>
           <span class="flex shrink-0">${orderButton('up', 'document', page.id, sectionIndex === 0 && pageIndex === 0)}${orderButton('down', 'document', page.id, sectionIndex === structure.sections.length - 1 && pageIndex === pages.length - 1)}</span>
         </div>`).join('') || '<p class="p-3 text-center text-xs text-slate-400">Letakkan halaman di sini</p>'}</div>
     </section>`;
@@ -560,7 +578,7 @@ function openProject(project = null) {
   projectForm.elements.slug.value = project?.slug || '';
   projectForm.elements.description.value = project?.description || '';
   projectForm.elements.order.value = project?.order ?? 0;
-  projectForm.elements.published.checked = project?.published ?? true;
+  projectForm.elements.visibility.value = project?.visibility || (project?.published === false ? 'draft' : 'public');
   document.querySelector('#project-dialog-title').textContent = project ? 'Edit proyek' : 'Tambah proyek';
   document.querySelector('#delete-project').classList.toggle('hidden', !project);
   setFormError(projectForm);
@@ -614,6 +632,8 @@ document.querySelector('#login-form').addEventListener('submit', async (event) =
   try {
     const result = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
     state.csrfToken = result.csrfToken;
+    const returnPath = safeLoginReturnPath();
+    if (returnPath) return location.replace(returnPath);
     await refresh();
     showDashboard();
   } catch (exception) {
@@ -1072,8 +1092,12 @@ document.querySelector('#delete-section').addEventListener('click', async () => 
 try {
   const session = await api('/api/auth/session');
   state.csrfToken = session.csrfToken;
-  await refresh();
-  showDashboard();
+  const returnPath = safeLoginReturnPath();
+  if (returnPath) location.replace(returnPath);
+  else {
+    await refresh();
+    showDashboard();
+  }
 } catch {
   showLogin();
 }

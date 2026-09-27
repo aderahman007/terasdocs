@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMarkdown } from '../src/markdown.js';
+import { extractMediaIds, renderMarkdown } from '../src/markdown.js';
 
 test('renderer menghasilkan HTML dari Markdown', () => {
   assert.match(renderMarkdown('# Judul'), /<h1>Judul<\/h1>/);
@@ -23,4 +23,12 @@ test('renderer mengizinkan media aman dan membatasi host iframe', () => {
   assert.match(html, /youtube-nocookie\.com\/embed\/abcdef/);
   assert.doesNotMatch(html, /evil\.example/);
   assert.doesNotMatch(html, /autoplay/);
+});
+
+test('referensi media hanya diambil dari atribut konten yang benar-benar dirender', () => {
+  const imageId = '11111111-1111-4111-8111-111111111111';
+  const linkId = '22222222-2222-4222-8222-222222222222';
+  const exampleId = '33333333-3333-4333-8333-333333333333';
+  const markdown = `![Gambar](/media/${imageId})\n\n[Unduh](https://docs.example.com/media/${linkId})\n\n\`/media/${exampleId}\``;
+  assert.deepEqual([...extractMediaIds(markdown)].sort(), [imageId, linkId]);
 });

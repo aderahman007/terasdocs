@@ -4,6 +4,7 @@ import path from 'node:path';
 import { config } from './config.js';
 import { extractTarGzip, saveStream } from './archive.js';
 import { AppError, assert } from './errors.js';
+import { extractMediaIds } from './markdown.js';
 import { validateDocument, validateProject, validateSection } from './validation.js';
 import sanitizeHtml from 'sanitize-html';
 
@@ -18,7 +19,8 @@ const uploadsDir = path.join(config.storageDir, 'uploads');
 const backupManifestName = 'backup-manifest.json';
 const restoreDir = path.join(config.storageDir, '.restore');
 let writeQueue = Promise.resolve();
-let searchIndex = null;
+const searchIndexes = new Map();
+let publicMediaIds = null;
 const pendingRestores = new Map();
 const RESTORE_TTL_MS = 15 * 60 * 1000;
 
@@ -437,6 +439,16 @@ function sortItems(items) {
   return [...items].sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'id'));
 }
 
+function projectVisibility(project) {
+  if (['public', 'private', 'draft'].includes(project?.visibility)) return project.visibility;
+  return project?.published === false ? 'draft' : 'public';
+}
+
+function normalizeProject(project) {
+  const visibility = projectVisibility(project);
+  return { ...project, visibility, published: visibility !== 'draft' };
+}
+
 function nextOrder(items) {
   if (!items.length) return 0;
   const order = Math.max(...items.map((item) => Number(item.order) || 0)) + 1;
@@ -453,7 +465,8 @@ function assertExactIds(actualItems, proposedIds, label) {
 }
 
 function invalidateSearchIndex() {
-  searchIndex = null;
+  searchIndexes.clear();
+  publicMediaIds = null;
 }
 
 export async function initializeStorage() {
@@ -487,6 +500,7 @@ export async function initializeStorage() {
       slug: 'panduan-produk',
       description: 'Dokumentasi pertama Anda. Kelola konten ini melalui panel admin.',
       order: 0,
+      visibility: 'public',
       published: true,
       createdAt: now,
       updatedAt: now,
@@ -517,7 +531,14 @@ export async function initializeStorage() {
     await Promise.all([atomicWrite(projectsFile, projects), atomicWrite(sectionsFile, sections), atomicWrite(documentsFile, documents)]);
   } else {
     let migrated = false;
+    let migratedProjects = false;
     for (const project of projects) {
+      if (!['public', 'private', 'draft'].includes(project.visibility)) {
+        project.visibility = project.published === false ? 'draft' : 'public';
+        project.published = project.visibility !== 'draft';
+        migrated = true;
+        migratedProjects = true;
+      }
       let projectSections = sections.filter((section) => section.projectId === project.id);
       if (!projectSections.length) {
         const section = { id: randomUUID(), projectId: project.id, title: 'Umum', slug: 'umum', order: 0, createdAt: now, updatedAt: now };
@@ -533,31 +554,37 @@ export async function initializeStorage() {
       });
     }
     if (migrated) {
-      await snapshot('migrate-sections');
-      await Promise.all([atomicWrite(sectionsFile, sections), atomicWrite(documentsFile, documents)]);
+      await snapshot(migratedProjects ? 'migrate-project-visibility' : 'migrate-sections');
+      await Promise.all([atomicWrite(projectsFile, projects), atomicWrite(sectionsFile, sections), atomicWrite(documentsFile, documents)]);
     }
   }
   if (!initialized) await writeFile(initializedFile, `${now}\n`, { encoding: 'utf8', mode: 0o600 });
 }
 
-export async function getCatalog({ admin = false } = {}) {
+export async function getCatalog({ admin = false, includePrivate = false } = {}) {
   const [projects, sections, documents] = await Promise.all([readJson(projectsFile), readJson(sectionsFile), readJson(documentsFile)]);
-  const visibleProjects = admin ? projects : projects.filter((item) => item.published);
+  const normalizedProjects = projects.map(normalizeProject);
+  const visibleProjects = admin
+    ? normalizedProjects
+    : normalizedProjects.filter((item) => item.visibility === 'public' || (includePrivate && item.visibility === 'private'));
   const visibleIds = new Set(visibleProjects.map((item) => item.id));
   const visibleSections = sections.filter((item) => visibleIds.has(item.projectId));
   const visibleDocuments = documents.filter((item) => visibleIds.has(item.projectId) && (admin || item.published));
   return { projects: sortItems(visibleProjects), sections: sortItems(visibleSections), documents: sortItems(visibleDocuments) };
 }
 
-export async function getProjects() {
-  const { projects, documents } = await getCatalog();
+export async function getProjects(options = {}) {
+  const { projects, documents } = await getCatalog(options);
   return projects.map((project) => ({ ...project, documentCount: documents.filter((item) => item.projectId === project.id).length }));
 }
 
-export async function getNavigation(projectSlug) {
-  const { projects, sections, documents } = await getCatalog();
-  const project = projects.find((item) => item.slug === projectSlug);
-  assert(project, 404, 'Proyek dokumentasi tidak ditemukan.');
+export async function getNavigation(projectSlug, { includePrivate = false } = {}) {
+  const adminCatalog = await getCatalog({ admin: true });
+  const requestedProject = adminCatalog.projects.find((item) => item.slug === projectSlug);
+  assert(requestedProject && requestedProject.visibility !== 'draft', 404, 'Proyek dokumentasi tidak ditemukan.');
+  assert(requestedProject.visibility !== 'private' || includePrivate, 401, 'Dokumentasi ini bersifat privat. Silakan login untuk melanjutkan.');
+  const { projects, sections, documents } = await getCatalog({ includePrivate });
+  const project = projects.find((item) => item.id === requestedProject.id);
   const projectSections = sections.filter((item) => item.projectId === project.id);
   const sectionOrder = new Map(projectSections.map((item, index) => [item.id, index]));
   const projectDocuments = documents.filter((item) => item.projectId === project.id).sort((a, b) => {
@@ -567,24 +594,33 @@ export async function getNavigation(projectSlug) {
   return { project, sections: projectSections, documents: projectDocuments };
 }
 
-export async function searchDocuments(query) {
+export async function searchDocuments(query, { includePrivate = false } = {}) {
   const needle = String(query || '').trim().toLocaleLowerCase('id').slice(0, 100);
   if (needle.length < 2) return [];
-  if (!searchIndex) {
-    const { projects, documents } = await getCatalog();
+  const indexKey = includePrivate ? 'private' : 'public';
+  if (!searchIndexes.has(indexKey)) {
+    const { projects, documents } = await getCatalog({ includePrivate });
     const projectMap = new Map(projects.map((item) => [item.id, item]));
-    searchIndex = [];
+    const searchIndex = [];
     for (const document of documents) {
       let content = '';
       try { content = await readFile(contentPath(document.projectId, document.id), 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
       searchIndex.push({ document, project: projectMap.get(document.projectId), searchable: `${document.title} ${document.excerpt} ${content}`.toLocaleLowerCase('id') });
     }
+    searchIndexes.set(indexKey, searchIndex);
   }
-  return searchIndex.filter((item) => item.searchable.includes(needle)).slice(0, 20).map(({ document, project }) => ({ ...document, project }));
+  return searchIndexes.get(indexKey).filter((item) => item.searchable.includes(needle)).slice(0, 20).map(({ document, project }) => ({ ...document, project }));
 }
 
-export async function getDocument(id, { admin = false } = {}) {
-  const { projects, documents } = await getCatalog({ admin });
+export async function getDocument(id, { admin = false, includePrivate = false } = {}) {
+  if (!admin) {
+    const adminCatalog = await getCatalog({ admin: true });
+    const requestedDocument = adminCatalog.documents.find((item) => item.id === id);
+    const requestedProject = requestedDocument && adminCatalog.projects.find((item) => item.id === requestedDocument.projectId);
+    assert(requestedDocument?.published && requestedProject?.visibility !== 'draft', 404, 'Dokumen tidak ditemukan.');
+    assert(requestedProject.visibility !== 'private' || includePrivate, 401, 'Dokumentasi ini bersifat privat. Silakan login untuk melanjutkan.');
+  }
+  const { projects, documents } = await getCatalog({ admin, includePrivate });
   const document = documents.find((item) => item.id === id);
   assert(document, 404, 'Dokumen tidak ditemukan.');
   const project = projects.find((item) => item.id === document.projectId);
@@ -816,7 +852,7 @@ export async function getMediaInventory() {
   assert(Array.isArray(documents) && Array.isArray(projects), 500, 'Metadata dokumentasi tidak valid.');
 
   const references = new Map(items.map((item) => [item.id, []]));
-  const projectNames = new Map(projects.map((item) => [item.id, item.title]));
+  const projectDetails = new Map(projects.map((item) => [item.id, normalizeProject(item)]));
   for (const document of documents) {
     let content;
     try {
@@ -825,14 +861,15 @@ export async function getMediaInventory() {
       if (error.code === 'ENOENT') continue;
       throw error;
     }
-    const referencedIds = new Set([...content.matchAll(/\/media\/([a-f0-9-]{36})(?![a-f0-9-])/gi)].map((match) => match[1].toLowerCase()));
+    const referencedIds = extractMediaIds(content);
     for (const id of referencedIds) {
       if (!references.has(id)) continue;
       references.get(id).push({
         documentId: document.id,
         documentTitle: document.title,
         projectId: document.projectId,
-        projectTitle: projectNames.get(document.projectId) || 'Proyek tidak ditemukan',
+        projectTitle: projectDetails.get(document.projectId)?.title || 'Proyek tidak ditemukan',
+        projectVisibility: projectDetails.get(document.projectId)?.visibility || 'draft',
         published: Boolean(document.published),
       });
     }
@@ -872,6 +909,30 @@ export async function getMedia(id) {
   assert(media, 404, 'Media tidak ditemukan.');
   assert(new RegExp(`^${id}\\.[a-z0-9]+$`).test(media.storedName), 500, 'Metadata lokasi media tidak valid.');
   return { ...media, filePath: path.join(uploadsDir, media.storedName) };
+}
+
+async function getPublicMediaIds() {
+  if (publicMediaIds) return publicMediaIds;
+  const { documents } = await getCatalog();
+  const ids = new Set();
+  for (const document of documents) {
+    let content = '';
+    try {
+      content = await readFile(contentPath(document.projectId, document.id), 'utf8');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    for (const id of extractMediaIds(content)) ids.add(id);
+  }
+  publicMediaIds = ids;
+  return ids;
+}
+
+export async function getMediaForViewer(id, { authenticated = false } = {}) {
+  const media = await getMedia(id);
+  if (authenticated) return media;
+  assert((await getPublicMediaIds()).has(id), 401, 'File ini merupakan bagian dari dokumentasi privat. Silakan login untuk mengaksesnya.');
+  return media;
 }
 
 export async function createMedia({ fileName, mimeType, buffer }) {

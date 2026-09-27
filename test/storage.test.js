@@ -51,6 +51,32 @@ test('storage menjalankan CRUD proyek dan dokumen serta membuat backup', async (
   assert.ok((await readdir(path.join(directory, 'backups'))).length > 0);
 });
 
+test('proyek privat hanya tersedia untuk pembaca yang sudah login', async () => {
+  const project = await storage.createProject({ title: 'Panduan Internal', slug: 'panduan-internal', description: 'Khusus admin', order: 0, visibility: 'private' });
+  const draftProject = await storage.createProject({ title: 'Belum Siap', slug: 'belum-siap', description: '', order: 0, visibility: 'draft' });
+  const adminCatalog = await storage.getCatalog({ admin: true });
+  const section = adminCatalog.sections.find((item) => item.projectId === project.id);
+  const mediaSource = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>');
+  const media = await storage.createMedia({ fileName: 'internal.svg', mimeType: 'image/svg+xml', buffer: mediaSource });
+  const document = await storage.createDocument({ projectId: project.id, sectionId: section.id, title: 'Rahasia Internal', slug: 'rahasia-internal', excerpt: '', content: `# Rahasia Internal\n\n![Internal](/media/${media.id})`, order: 0, published: true });
+
+  assert.equal((await storage.getProjects()).some((item) => item.id === project.id), false);
+  assert.equal((await storage.getProjects({ includePrivate: true })).some((item) => item.id === project.id), true);
+  assert.equal((await storage.getProjects({ includePrivate: true })).some((item) => item.id === draftProject.id), false);
+  await assert.rejects(() => storage.getNavigation(project.slug), /privat/);
+  assert.equal((await storage.getNavigation(project.slug, { includePrivate: true })).project.id, project.id);
+  await assert.rejects(() => storage.getDocument(document.id), /privat/);
+  assert.equal((await storage.getDocument(document.id, { includePrivate: true })).id, document.id);
+  assert.equal((await storage.searchDocuments('Rahasia Internal')).length, 0);
+  assert.equal((await storage.searchDocuments('Rahasia Internal', { includePrivate: true }))[0].id, document.id);
+  await assert.rejects(() => storage.getMediaForViewer(media.id), /privat/);
+  assert.equal((await storage.getMediaForViewer(media.id, { authenticated: true })).id, media.id);
+
+  await storage.deleteProject(project.id);
+  await storage.deleteProject(draftProject.id);
+  await storage.deleteMedia(media.id);
+});
+
 test('admin dapat membuat, mengarsipkan, dan menghapus backup lengkap', async () => {
   await writeFile(path.join(directory, 'content', '.gitkeep'), '');
   await writeFile(path.join(directory, 'uploads', '.gitkeep'), '');
@@ -190,6 +216,9 @@ test('media disimpan di luar folder publik dan SVG berbahaya disanitasi', async 
   assert.equal(usedMedia.usageCount, 1);
   assert.equal(usedMedia.references[0].documentTitle, 'Media Test');
   await assert.rejects(() => storage.deleteMedia(media.id), /masih digunakan/);
+
+  await storage.updateDocument(document.id, { ...document, content: `![Diagram](/media/${media.id})`, published: true });
+  assert.equal((await storage.getMediaForViewer(media.id)).id, media.id);
 
   const unusedMedia = await storage.createMedia({ fileName: 'unused.svg', mimeType: 'image/svg+xml', buffer: source });
   inventory = await storage.getMediaInventory();

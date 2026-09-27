@@ -21,7 +21,7 @@ import {
   getBackup,
   getCatalog,
   getDocument,
-  getMedia,
+  getMediaForViewer,
   getMediaInventory,
   getNavigation,
   getProjects,
@@ -57,21 +57,31 @@ app.use(['/api/auth', '/api/admin'], (_req, res, next) => {
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
-app.get('/api/public/catalog', async (_req, res) => res.json(await getCatalog()));
-app.get('/api/public/projects', async (_req, res) => res.json(await getProjects()));
-app.get('/api/public/projects/:slug/navigation', async (req, res) => res.json(await getNavigation(req.params.slug)));
-app.get('/api/public/search', async (req, res) => res.json(await searchDocuments(req.query.q)));
+app.use('/api/public', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Vary', 'Cookie');
+  next();
+});
+
+const viewerOptions = (req) => ({ includePrivate: Boolean(getSession(req)) });
+
+app.get('/api/public/catalog', async (req, res) => res.json(await getCatalog(viewerOptions(req))));
+app.get('/api/public/projects', async (req, res) => res.json(await getProjects(viewerOptions(req))));
+app.get('/api/public/projects/:slug/navigation', async (req, res) => res.json(await getNavigation(req.params.slug, viewerOptions(req))));
+app.get('/api/public/search', async (req, res) => res.json(await searchDocuments(req.query.q, viewerOptions(req))));
 app.get('/api/public/documents/:id', async (req, res) => {
-  const document = await getDocument(req.params.id);
+  const document = await getDocument(req.params.id, viewerOptions(req));
   res.json({ ...document, html: renderMarkdown(document.content), content: undefined });
 });
 app.get('/media/:id', async (req, res) => {
-  const media = await getMedia(req.params.id);
+  const authenticated = Boolean(getSession(req));
+  const media = await getMediaForViewer(req.params.id, { authenticated });
   const inline = ['image', 'video', 'pdf'].includes(media.kind);
   const fallbackName = media.originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
   res.setHeader('Content-Type', media.mimeType);
+  res.setHeader('Vary', 'Cookie');
   res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${fallbackName}"; filename*=UTF-8''${encodeURIComponent(media.originalName)}`);
-  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'self'; sandbox");
   res.sendFile(media.filePath);
